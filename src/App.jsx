@@ -1,8 +1,12 @@
 import React, { useState, useRef } from 'react';
 import { UploadCloud, X, Leaf, Activity, CheckCircle, AlertTriangle } from 'lucide-react';
+import Login from './Login';
+import Register from './Register';
 import './index.css';
 
 function App() {
+  const [view, setView] = useState('login');
+  const [token, setToken] = useState(null);
   const [file, setFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [dragActive, setDragActive] = useState(false);
@@ -70,29 +74,44 @@ function App() {
       // Get base64 string without data url prefix
       const base64String = imagePreview.split(',')[1];
       
-      // We now call our secure internal Vercel Serverless Function
-      // This hides the actual backend base URL from the user's browser.
-      const response = await fetch(`/api/predict`, {
+      const baseUrl = import.meta.env.VITE_AUTH_SERVER_URL || '';
+      const response = await fetch(`${baseUrl}/predict`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({ image: base64String })
       });
 
-      if (!response.ok) {
-        throw new Error(`API Error: ${response.status}`);
+      if (response.status === 401) {
+        setToken(null);
+        setView('login');
+        return;
       }
 
       const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.message || `API Error: ${response.status}`);
+      }
+
       setResult(data);
     } catch (err) {
       console.error(err);
-      setError("Failed to analyze image. Ensure the backend is running and accessible.");
+      setError(err.message || "Failed to analyze image. Ensure the backend is running and accessible.");
     } finally {
       setLoading(false);
     }
   };
+
+  if (view === 'login') {
+    return <Login setView={setView} setToken={setToken} />;
+  }
+
+  if (view === 'register') {
+    return <Register setView={setView} />;
+  }
 
   return (
     <div className="app-container">
