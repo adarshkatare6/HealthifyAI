@@ -18,11 +18,14 @@ COLAB_URL = os.environ.get('COLAB_URL', 'https://unifier-sleek-cornhusk.ngrok-fr
 
 # Setup MongoDB
 try:
-    client = MongoClient(MONGO_URI)
-    db = client.get_default_database() if client.get_default_database().name else client['healthifyai']
+    client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
+    db = client['healthifyai']
     users_collection = db['users']
+    # Force a connection test
+    client.admin.command('ping')
 except Exception as e:
     print(f"Error connecting to MongoDB: {e}")
+    users_collection = None
 
 # Authentication Decorator
 def token_required(f):
@@ -54,9 +57,20 @@ def token_required(f):
 
     return decorated
 
+@app.errorhandler(Exception)
+def handle_exception(e):
+    # Pass through HTTP errors
+    from werkzeug.exceptions import HTTPException
+    import traceback
+    if isinstance(e, HTTPException):
+        return jsonify({'error': str(e)}), e.code
+    return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
 
 @app.route('/register', methods=['POST'])
 def register():
+    if users_collection is None:
+        return jsonify({'message': 'Database connection failed. Please check Render logs or MongoDB IP Whitelist.'}), 500
+
     data = request.json
     
     if not data or not data.get('username') or not data.get('password'):
@@ -82,6 +96,9 @@ def register():
 
 @app.route('/login', methods=['POST'])
 def login():
+    if users_collection is None:
+        return jsonify({'message': 'Database connection failed. Please check Render logs or MongoDB IP Whitelist.'}), 500
+
     data = request.json
     
     if not data or not data.get('username') or not data.get('password'):
